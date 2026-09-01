@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Earth Engine credentials (never commit these)
+.config/earthengine/
+*credentials*.json
+*service-account*.json
+
+# Data exports
+data/*.csv
+!data/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Environment
+.env

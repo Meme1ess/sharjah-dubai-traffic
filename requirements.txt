@@ -1,0 +1,17 @@
+# Core
+earthengine-api>=0.1.400
+streamlit>=1.32.0
+streamlit-folium>=0.20.0
+folium>=0.15.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.18.0
+python-dateutil>=2.8.2
+
+# Optional: geemap is a common companion library for GEE + Python notebook
+# work (e.g. ad-hoc exploration outside this app). It is NOT imported by
+# app.py — this app renders its interactive map with folium + streamlit-
+# folium directly (calling ee.Image.getMapId()) to avoid geemap's heavier
+# ipyleaflet/ipywidgets dependency chain, which is unnecessary for a
+# server-rendered Streamlit map. Uncomment if you want it for notebooks:
+# geemap>=0.32.0
