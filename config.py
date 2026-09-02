@@ -111,14 +111,27 @@ ACTIVITY_Z_THRESHOLDS = {
 # Plain-language ordering and colors for the simplified "Activity Level"
 # chart (see app.py render_activity_level_chart). Kept here so the chart's
 # color scheme stays consistent everywhere it's used.
+#
+# This is a 5-step DIVERGING status ramp (below-normal / normal / above-
+# normal), not a free categorical palette, so it's built as two hues
+# (blue = below normal, red = above normal) either side of a neutral
+# slate-violet midpoint. Every value below was chosen by running it through
+# the dataviz skill's colorblind/contrast validator (OKLCH lightness band
+# + chroma floor for our dark chart surface #131a2a, CVD adjacent-pair
+# separation under protan/deutan simulation, and the normal-vision
+# separation floor) rather than picked by eye — see
+# scripts/validate_palette.py in project history for the check. All pairs
+# clear every hard gate; contrast vs. the dark surface lands in the
+# "relief" band, which is why every chart that uses this palette always
+# pairs color with a direct text label (never color alone).
 ACTIVITY_LEVELS = ["Very Low", "Low", "Normal", "Elevated", "High"]
 ACTIVITY_LEVEL_COLORS = {
-    "Very Low": "#4da6ff",
-    "Low": "#5fd1c0",
-    "Normal": "#8bc34a",
-    "Elevated": "#f4a300",
-    "High": "#e74c3c",
-    "Unknown": "#7f8c8d",
+    "Very Low": "#1e5ab3",
+    "Low": "#538cc6",
+    "Normal": "#735095",
+    "Elevated": "#c37322",
+    "High": "#b02818",
+    "Unknown": "#5b6472",
 }
 
 # Below this absolute dB change, the simplified "Change From Previous Month"
@@ -145,6 +158,32 @@ RESOLUTION_NOTICE_BODY = (
     "signals to detect relative temporal changes that may correlate with "
     "traffic activity. Values shown are proxy indicators, not vehicle counts."
 )
+
+# ---------------------------------------------------------------------------
+# Visual theme
+# ---------------------------------------------------------------------------
+# A "mission control" dark theme: deep space-navy surfaces with a signature
+# blue -> cyan -> violet accent gradient, evoking the satellite/radar
+# subject matter. Chart surfaces and text colors are shared with the CSS
+# theme (see THEME_CSS in app.py) so Plotly figures sit flush against the
+# custom-styled cards instead of showing Streamlit's default chart chrome.
+THEME = {
+    "bg_deep": "#0a0e17",
+    "bg_surface": "#131a2a",
+    "bg_surface_alt": "#0d1220",
+    "bg_elevated": "#1a2338",
+    "border_subtle": "rgba(255,255,255,0.08)",
+    "border_accent": "rgba(77,166,255,0.35)",
+    "text_primary": "#eef2f7",
+    "text_secondary": "#aab4c8",
+    "text_muted": "#6b7688",
+    "accent_blue": "#4da6ff",
+    "accent_cyan": "#22d3ee",
+    "accent_violet": "#8b5cf6",
+    "font_display": "'Space Grotesk', sans-serif",
+    "font_body": "'Inter', sans-serif",
+    "font_mono": "'JetBrains Mono', monospace",
+}
 
 # ---------------------------------------------------------------------------
 # Output paths

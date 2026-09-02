@@ -35,21 +35,170 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-CUSTOM_CSS = """
+_T = config.THEME
+
+
+def _themed_css() -> str:
+    """Build the app's "mission control" dark theme as one CSS block.
+
+    Kept as an f-string over config.THEME (rather than hard-coded colors)
+    so the Plotly chart theme in style_plotly_fig() and this stylesheet can
+    never drift apart — both read the same palette constants.
+    """
+    return f"""
 <style>
-    .block-container {padding-top: 2rem; padding-bottom: 2rem;}
-    .proxy-disclaimer {
-        background-color: #1a2634;
-        border-left: 4px solid #4da6ff;
-        padding: 0.9rem 1.1rem;
-        border-radius: 6px;
-        margin-bottom: 1rem;
-        font-size: 0.92rem;
-    }
-    div[data-testid="stMetricValue"] {font-size: 1.6rem;}
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root {{
+    --bg-deep: {_T['bg_deep']};
+    --bg-surface: {_T['bg_surface']};
+    --bg-surface-alt: {_T['bg_surface_alt']};
+    --bg-elevated: {_T['bg_elevated']};
+    --border-subtle: {_T['border_subtle']};
+    --border-accent: {_T['border_accent']};
+    --text-primary: {_T['text_primary']};
+    --text-secondary: {_T['text_secondary']};
+    --text-muted: {_T['text_muted']};
+    --accent-blue: {_T['accent_blue']};
+    --accent-cyan: {_T['accent_cyan']};
+    --accent-violet: {_T['accent_violet']};
+    --font-display: {_T['font_display']};
+    --font-body: {_T['font_body']};
+    --font-mono: {_T['font_mono']};
+}}
+
+/* -- page canvas ---------------------------------------------------- */
+.stApp {{
+    background:
+        radial-gradient(ellipse 900px 500px at 12% -8%, rgba(77,166,255,0.16), transparent 60%),
+        radial-gradient(ellipse 700px 500px at 100% 0%, rgba(139,92,246,0.12), transparent 55%),
+        radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px) 0 0/26px 26px,
+        var(--bg-deep);
+}}
+html, body, [class*="css"] {{ font-family: var(--font-body); }}
+.block-container {{ padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1200px; }}
+h1, h2, h3 {{ font-family: var(--font-display) !important; letter-spacing: -0.01em; }}
+p, span, li, label {{ color: var(--text-secondary); }}
+
+/* -- hero header ------------------------------------------------------ */
+.hero-wrap {{ margin-top: 0.4rem; margin-bottom: 1.4rem; }}
+.hero-badge {{
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    background: rgba(77,166,255,0.10); border: 1px solid var(--border-accent);
+    color: var(--accent-cyan); font-family: var(--font-mono); font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 0.3rem 0.7rem; border-radius: 999px; margin-bottom: 0.9rem;
+}}
+.hero-badge .dot {{
+    width: 7px; height: 7px; border-radius: 50%; background: var(--accent-cyan);
+    box-shadow: 0 0 0 rgba(34,211,238,0.6); animation: pulse-dot 2s infinite;
+}}
+@keyframes pulse-dot {{
+    0% {{ box-shadow: 0 0 0 0 rgba(34,211,238,0.55); }}
+    70% {{ box-shadow: 0 0 0 8px rgba(34,211,238,0); }}
+    100% {{ box-shadow: 0 0 0 0 rgba(34,211,238,0); }}
+}}
+.hero-title {{
+    font-family: var(--font-display); font-weight: 700; font-size: 2.6rem;
+    line-height: 1.12; margin: 0.6rem 0 0.5rem 0;
+    background: linear-gradient(100deg, #ffffff 10%, var(--accent-cyan) 55%, var(--accent-violet) 95%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent !important; -webkit-text-fill-color: transparent !important;
+}}
+.hero-subtitle {{ color: var(--text-secondary); font-size: 1.02rem; margin: 0; max-width: 62ch; }}
+
+/* -- resolution notice -------------------------------------------------- */
+.proxy-disclaimer {{
+    display: flex; gap: 0.85rem; align-items: flex-start;
+    background: linear-gradient(135deg, rgba(77,166,255,0.09), rgba(139,92,246,0.05));
+    border: 1px solid var(--border-accent);
+    border-radius: 12px; padding: 1rem 1.15rem; margin: 1.1rem 0 1.4rem 0;
+}}
+.proxy-disclaimer .icon {{
+    flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px;
+    background: rgba(77,166,255,0.16); display: flex; align-items: center;
+    justify-content: center; font-size: 1.1rem;
+}}
+.proxy-disclaimer strong {{ color: var(--text-primary); font-family: var(--font-display); font-size: 0.95rem; }}
+.proxy-disclaimer p {{ margin: 0.25rem 0 0 0; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary); }}
+
+/* -- section eyebrow labels ------------------------------------------ */
+.eyebrow {{
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent-cyan); margin-bottom: 0.35rem;
+}}
+.eyebrow::before {{ content: "◆"; font-size: 0.6rem; }}
+
+/* -- metric / stat cards ---------------------------------------------- */
+div[data-testid="stMetric"] {{
+    background: linear-gradient(160deg, var(--bg-surface), var(--bg-surface-alt));
+    border: 1px solid var(--border-subtle);
+    border-top: 2px solid var(--accent-blue);
+    border-radius: 12px; padding: 0.9rem 1rem 0.7rem 1rem;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}}
+div[data-testid="stMetric"]:hover {{
+    transform: translateY(-2px);
+    border-color: var(--border-accent);
+    box-shadow: 0 8px 24px rgba(77,166,255,0.12);
+}}
+div[data-testid="stMetricValue"] {{
+    font-family: var(--font-mono) !important; font-size: 1.5rem !important;
+    color: var(--text-primary) !important;
+}}
+div[data-testid="stMetricLabel"] {{
+    font-size: 0.76rem !important; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted) !important;
+}}
+
+/* -- buttons ------------------------------------------------------------ */
+.stButton > button, .stDownloadButton > button {{
+    background: linear-gradient(100deg, var(--accent-blue), var(--accent-violet)) !important;
+    color: #ffffff !important; border: none !important; border-radius: 10px !important;
+    font-family: var(--font-display) !important; font-weight: 600 !important;
+    letter-spacing: 0.01em; box-shadow: 0 4px 18px rgba(77,166,255,0.25);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}}
+.stButton > button:hover, .stDownloadButton > button:hover {{
+    transform: translateY(-1px); box-shadow: 0 8px 26px rgba(77,166,255,0.4);
+}}
+
+/* -- sidebar -------------------------------------------------------- */
+section[data-testid="stSidebar"] {{
+    background: var(--bg-surface-alt); border-right: 1px solid var(--border-subtle);
+}}
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {{ font-family: var(--font-display) !important; }}
+
+/* -- tabs ---------------------------------------------------------------- */
+.stTabs [data-baseweb="tab-list"] {{ gap: 0.3rem; border-bottom: 1px solid var(--border-subtle); }}
+.stTabs [data-baseweb="tab"] {{
+    font-family: var(--font-display); font-weight: 500; color: var(--text-muted);
+    padding: 0.6rem 1rem;
+}}
+.stTabs [aria-selected="true"] {{ color: var(--text-primary) !important; }}
+.stTabs [data-baseweb="tab-highlight"] {{
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan)) !important;
+    height: 3px !important; border-radius: 3px;
+}}
+
+/* -- expanders ------------------------------------------------------- */
+details[data-testid="stExpander"] {{
+    background: var(--bg-surface); border: 1px solid var(--border-subtle) !important;
+    border-radius: 10px !important;
+}}
+
+/* -- dataframe / captions ------------------------------------------------ */
+[data-testid="stDataFrame"] {{ border-radius: 10px; overflow: hidden; border: 1px solid var(--border-subtle); }}
+[data-testid="stCaptionContainer"] {{ color: var(--text-muted) !important; }}
+hr {{ border-color: var(--border-subtle) !important; }}
 </style>
 """
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+st.markdown(_themed_css(), unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -126,14 +275,19 @@ def run_corridor_analysis(
 # Header
 # ---------------------------------------------------------------------------
 
-st.title(config.APP_TITLE)
-st.caption(config.APP_SUBTITLE)
-
 st.markdown(
     f"""
+    <div class="hero-wrap">
+        <div class="hero-badge"><span class="dot"></span>LIVE SATELLITE FEED</div>
+        <h1 class="hero-title">{config.APP_TITLE}</h1>
+        <p class="hero-subtitle">{config.APP_SUBTITLE}</p>
+    </div>
     <div class="proxy-disclaimer">
-        <strong>⚠️ {config.RESOLUTION_NOTICE_TITLE}</strong><br>
-        {config.RESOLUTION_NOTICE_BODY}
+        <div class="icon">📡</div>
+        <div>
+            <strong>{config.RESOLUTION_NOTICE_TITLE}</strong>
+            <p>{config.RESOLUTION_NOTICE_BODY}</p>
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -302,6 +456,43 @@ ACTIVITY_LEVEL_PLAIN_HOVER = {
 }
 
 
+def style_plotly_fig(fig: go.Figure) -> go.Figure:
+    """Apply the app's shared chart theme so every figure sits flush with
+    the surrounding dark-themed cards instead of showing Plotly's default
+    white chrome. Called once at the end of each render_* function.
+    """
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor=_T["bg_surface"],
+        font=dict(family=_T["font_body"], color=_T["text_secondary"], size=13),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=_T["text_secondary"])),
+        hoverlabel=dict(
+            bgcolor=_T["bg_elevated"],
+            bordercolor=_T["border_subtle"],
+            font=dict(family=_T["font_body"], color=_T["text_primary"]),
+        ),
+        margin=dict(t=fig.layout.margin.t or 30, b=fig.layout.margin.b or 10, l=40, r=20),
+    )
+    fig.update_xaxes(
+        gridcolor=_T["border_subtle"], zerolinecolor=_T["border_subtle"],
+        linecolor=_T["border_subtle"], tickfont=dict(color=_T["text_muted"]),
+        title_font=dict(color=_T["text_muted"]),
+    )
+    fig.update_yaxes(
+        gridcolor=_T["border_subtle"], zerolinecolor=_T["border_subtle"],
+        linecolor=_T["border_subtle"], tickfont=dict(color=_T["text_muted"]),
+        title_font=dict(color=_T["text_muted"]),
+    )
+    return fig
+
+
+def eyebrow(text: str) -> None:
+    """Render a small uppercase accent-colored label above a section, for
+    the dashboard-style "mission control" visual language used throughout.
+    """
+    st.markdown(f'<div class="eyebrow">{text}</div>', unsafe_allow_html=True)
+
+
 def render_signal_strength_chart(dfs: dict) -> go.Figure:
     """Plain-language signal-trend chart: shape only, no dB numbers shown.
 
@@ -347,7 +538,7 @@ def render_signal_strength_chart(dfs: dict) -> go.Figure:
         margin=dict(t=30, b=10),
         showlegend=len(dfs) > 1,
     )
-    return fig
+    return style_plotly_fig(fig)
 
 
 def render_activity_level_chart(dfs: dict) -> go.Figure:
@@ -414,7 +605,7 @@ def render_activity_level_chart(dfs: dict) -> go.Figure:
         height=380,
         showlegend=len(dfs) > 1,
     )
-    return fig
+    return style_plotly_fig(fig)
 
 
 def render_proxy_index_chart(dfs: dict) -> go.Figure:
@@ -459,7 +650,7 @@ def render_proxy_index_chart(dfs: dict) -> go.Figure:
                 ),
             )
         )
-    fig.add_hline(y=0, line_dash="dot", line_color="gray")
+    fig.add_hline(y=0, line_dash="dot", line_color=_T["text_muted"])
     fig.update_layout(
         xaxis_title="Month",
         yaxis_title="Standard deviations from this road's historical mean (z-score)",
@@ -467,7 +658,7 @@ def render_proxy_index_chart(dfs: dict) -> go.Figure:
         legend_title="Highway",
         margin=dict(t=30, b=10),
     )
-    return fig
+    return style_plotly_fig(fig)
 
 
 def _describe_change(value: float) -> str:
@@ -535,7 +726,7 @@ def render_change_chart(dfs: dict) -> go.Figure:
         barmode="group",
         margin=dict(t=30, b=10),
     )
-    return fig
+    return style_plotly_fig(fig)
 
 
 def build_folium_map(selected_road_codes: list, radar_overlay: bool, s2_date: str) -> folium.Map:
@@ -639,7 +830,8 @@ with tab_overview:
         primary_df = results[primary_code]
         summary = traffic_analyzer.summarize_latest(primary_df)
 
-        st.subheader(f"Summary — {corridors_module.get_corridor(primary_code)['name']}")
+        eyebrow("Live Summary")
+        st.subheader(f"{corridors_module.get_corridor(primary_code)['name']}")
 
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric(
@@ -671,7 +863,8 @@ with tab_overview:
 
         chart_data = {primary_code: primary_df}
 
-        st.markdown("**Activity Level — is this month typical for this road?**")
+        eyebrow("Traffic Activity")
+        st.markdown("#### Is this month typical for this road?")
         st.plotly_chart(render_activity_level_chart(chart_data), use_container_width=True)
         st.caption(
             "Each bar shows how this month's satellite radar reading "
@@ -682,11 +875,13 @@ with tab_overview:
 
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**Signal Trend Over Time**")
+            eyebrow("Trend")
+            st.markdown("#### Signal Over Time")
             st.plotly_chart(render_signal_strength_chart(chart_data), use_container_width=True)
             st.caption("Shows whether the satellite reading has been getting stronger or weaker each month.")
         with c2:
-            st.markdown("**Change From Previous Month**")
+            eyebrow("Momentum")
+            st.markdown("#### Change From Previous Month")
             st.plotly_chart(render_change_chart(chart_data), use_container_width=True)
             st.caption("Green = signal got stronger since last month. Red = it got weaker.")
 
@@ -700,6 +895,7 @@ with tab_overview:
 
 # ---- Satellite Map tab -----------------------------------------------------
 with tab_map:
+    eyebrow("Ground Truth")
     st.subheader("Interactive Highway Map")
     st.caption(
         "Sentinel-2 provides true-color visual context (~10 m resolution). "
@@ -735,14 +931,15 @@ with tab_map:
 
 # ---- Road Comparison tab ----------------------------------------------
 with tab_compare:
-    st.subheader("E11 vs. E311 — Road Comparison")
+    eyebrow("Head to Head")
+    st.subheader("E11 vs. E311")
     if len(results) < 2:
         st.info(
             "Run the analysis in **Compare Highways** mode (sidebar) with "
             "two or more highways selected to see a side-by-side comparison."
         )
     else:
-        st.markdown("**Activity Level — which road is more active than usual?**")
+        st.markdown("#### Which road is more active than usual?")
         st.plotly_chart(render_activity_level_chart(results), use_container_width=True)
         st.caption(
             "Compares each road only to its own history, so this is the "
@@ -751,18 +948,21 @@ with tab_compare:
 
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**Signal Trend Over Time**")
+            eyebrow("Trend")
+            st.markdown("#### Signal Over Time")
             st.plotly_chart(render_signal_strength_chart(results), use_container_width=True)
             st.caption("Shows whether each road's satellite reading has been getting stronger or weaker.")
         with c2:
-            st.markdown("**Change From Previous Month**")
+            eyebrow("Momentum")
+            st.markdown("#### Change From Previous Month")
             st.plotly_chart(render_change_chart(results), use_container_width=True)
             st.caption("Green = signal got stronger since last month. Red = it got weaker.")
 
         with st.expander("🔧 Advanced: technical z-score view"):
             st.plotly_chart(render_proxy_index_chart(results), use_container_width=True)
 
-        st.markdown("**Latest Comparison Snapshot**")
+        eyebrow("Snapshot")
+        st.markdown("#### Latest Comparison")
         rows = []
         for code, df in results.items():
             s = traffic_analyzer.summarize_latest(df)
@@ -778,6 +978,7 @@ with tab_compare:
 
 # ---- Data tab ---------------------------------------------------------
 with tab_data:
+    eyebrow("Raw Feed")
     st.subheader("Underlying Analysis Data")
     if not results:
         st.info("Run an analysis to populate the data table.")
@@ -845,6 +1046,7 @@ with tab_data:
 
 # ---- Methodology tab ---------------------------------------------------------
 with tab_methodology:
+    eyebrow("Under the Hood")
     st.subheader("How does this work?")
 
     with st.expander("Scientific approach & limitations", expanded=True):
