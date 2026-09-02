@@ -121,6 +121,11 @@ ACTIVITY_LEVEL_COLORS = {
     "Unknown": "#7f8c8d",
 }
 
+# Below this absolute dB change, the simplified "Change From Previous Month"
+# chart describes the month as "About the same" rather than stronger/weaker,
+# so tiny acquisition-noise fluctuations aren't over-narrated as a change.
+CHANGE_ABOUT_SAME_THRESHOLD_DB = 0.15
+
 # ---------------------------------------------------------------------------
 # Map / UI defaults
 # ---------------------------------------------------------------------------
@@ -136,7 +141,7 @@ APP_SUBTITLE = (
 RESOLUTION_NOTICE_TITLE = "Satellite Resolution Notice"
 RESOLUTION_NOTICE_BODY = (
     "Open-source Sentinel imagery cannot reliably identify individual "
-    "passenger vehicles. This system analyzes corridor-level satellite "
+    "passenger vehicles. This system analyzes road-level satellite "
     "signals to detect relative temporal changes that may correlate with "
     "traffic activity. Values shown are proxy indicators, not vehicle counts."
 )

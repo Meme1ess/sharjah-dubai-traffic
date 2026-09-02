@@ -46,9 +46,6 @@ CUSTOM_CSS = """
         margin-bottom: 1rem;
         font-size: 0.92rem;
     }
-    .status-ok {color: #2ecc71; font-weight: 600;}
-    .status-nodata {color: #e67e22; font-weight: 600;}
-    .status-error {color: #e74c3c; font-weight: 600;}
     div[data-testid="stMetricValue"] {font-size: 1.6rem;}
 </style>
 """
@@ -161,23 +158,23 @@ st.sidebar.header("Analysis Parameters")
 
 analysis_mode = st.sidebar.radio(
     "Mode",
-    options=["Single Corridor", "Compare Corridors"],
+    options=["Single Highway", "Compare Highways"],
     index=0,
 )
 
 available_codes = corridors_module.list_corridor_codes()
 
-if analysis_mode == "Single Corridor":
+if analysis_mode == "Single Highway":
     selected_codes = [
         st.sidebar.selectbox(
-            "Highway Corridor",
+            "Highway",
             options=available_codes,
             format_func=lambda code: f"{code} — {corridors_module.get_corridor(code)['name']}",
         )
     ]
 else:
     selected_codes = st.sidebar.multiselect(
-        "Highway Corridors to Compare",
+        "Highways to Compare",
         options=available_codes,
         default=available_codes,
         format_func=lambda code: f"{code} — {corridors_module.get_corridor(code)['name']}",
@@ -207,18 +204,19 @@ date_tolerance_days = st.sidebar.slider(
 )
 
 buffer_meters = st.sidebar.slider(
-    "Corridor Buffer Width (meters)",
+    "Measurement Zone Width (meters)",
     min_value=config.MIN_BUFFER_METERS,
     max_value=config.MAX_BUFFER_METERS,
     value=config.DEFAULT_BUFFER_METERS,
     step=25,
+    help="How wide an area around the highway to include in each reading.",
 )
 
 orbit_direction = st.sidebar.selectbox(
     "Sentinel-1 Orbit Direction",
     options=config.ORBIT_DIRECTIONS,
     index=0,
-    help="Ascending and descending passes view the corridor from "
+    help="Ascending and descending passes view the road from "
     "different look angles. Mixing them can introduce geometry-related "
     "artifacts into the time series — prefer a single direction for the "
     "most internally consistent comparison.",
@@ -252,7 +250,7 @@ if "last_params" not in st.session_state:
 
 if run_clicked and ee_ready:
     if not selected_codes:
-        st.sidebar.warning("Select at least one corridor to analyze.")
+        st.sidebar.warning("Select at least one highway to analyze.")
     else:
         results = {}
         progress = st.sidebar.progress(0.0, text="Starting analysis...")
@@ -305,8 +303,16 @@ ACTIVITY_LEVEL_PLAIN_HOVER = {
 
 
 def render_signal_strength_chart(dfs: dict) -> go.Figure:
-    """Radar signal strength over time (raw Sentinel-1 mean VV, in dB)."""
+    """Plain-language signal-trend chart: shape only, no dB numbers shown.
+
+    The underlying values are still raw Sentinel-1 mean VV backscatter (dB),
+    but the axis is deliberately unitless here — first-time visitors get the
+    trend (rising/falling), while the exact dB values live in the "Advanced"
+    z-score view for anyone who wants them.
+    """
     fig = go.Figure()
+    all_values = pd.concat([df["mean_vv_db"] for df in dfs.values()]).dropna()
+
     for code, df in dfs.items():
         fig.add_trace(
             go.Scatter(
@@ -315,18 +321,31 @@ def render_signal_strength_chart(dfs: dict) -> go.Figure:
                 mode="lines+markers",
                 name=code,
                 connectgaps=False,
-                marker=dict(size=8),
-                hovertemplate=(
-                    "%{x|%b %Y}<br>Signal strength: %{y:.1f} dB<extra>" + code + "</extra>"
-                ),
+                line=dict(width=3),
+                marker=dict(size=9),
+                hovertemplate="%{x|%b %Y}<extra>" + code + "</extra>",
             )
         )
+
+    yaxis_config = dict(title=None, showgrid=False, zeroline=False)
+    if not all_values.empty:
+        span = all_values.max() - all_values.min()
+        pad = span * 0.15 if span > 0 else 1.0
+        y0, y1 = all_values.min() - pad, all_values.max() + pad
+        yaxis_config.update(
+            range=[y0, y1],
+            tickmode="array",
+            tickvals=[y0, y1],
+            ticktext=["Weaker", "Stronger"],
+        )
+
     fig.update_layout(
         xaxis_title="Month",
-        yaxis_title="Radar Signal Strength (dB)",
+        yaxis=yaxis_config,
         hovermode="x unified",
-        legend_title="Corridor",
+        legend_title="Highway",
         margin=dict(t=30, b=10),
+        showlegend=len(dfs) > 1,
     )
     return fig
 
@@ -340,7 +359,11 @@ def render_activity_level_chart(dfs: dict) -> go.Figure:
     read at a glance without knowing what a z-score is.
     """
     fig = go.Figure()
-    bar_width = 0.8 if len(dfs) == 1 else None
+    # NOTE: no explicit bar `width` is set. Plotly bar width is interpreted
+    # in axis units on a date x-axis — a value like 0.8 means 0.8
+    # *milliseconds* wide (an invisible sliver), which was the cause of the
+    # "thin lines" look. Leaving width unset lets Plotly auto-size bars to
+    # fill the space between months sensibly, for both one and many series.
     for code, df in dfs.items():
         activity = df["relative_activity"].fillna("Unknown")
         ranks = activity.map(ACTIVITY_LEVEL_RANK).fillna(0)
@@ -350,13 +373,23 @@ def render_activity_level_chart(dfs: dict) -> go.Figure:
         plain_text = activity.map(ACTIVITY_LEVEL_PLAIN_HOVER).fillna(
             ACTIVITY_LEVEL_PLAIN_HOVER["Unknown"]
         )
+        # Zero-height "Unknown" bars have no visible bar to attach a label
+        # to — when two series both land on "Unknown" for the same month,
+        # their outside-positioned labels would otherwise stack into an
+        # unreadable overlap. Suppress the label there; the hover tooltip
+        # still explains it.
+        bar_labels = activity.where(activity != "Unknown", "")
         fig.add_trace(
             go.Bar(
                 x=df["date"],
                 y=ranks,
                 name=code,
-                width=bar_width,
                 marker_color=colors,
+                marker_line_width=0,
+                text=bar_labels,
+                textposition="outside",
+                textfont=dict(size=13, weight="bold"),
+                cliponaxis=False,
                 customdata=list(zip(activity, plain_text)),
                 hovertemplate=(
                     "%{x|%b %Y}<br><b>%{customdata[0]}</b><br>"
@@ -367,16 +400,18 @@ def render_activity_level_chart(dfs: dict) -> go.Figure:
     fig.update_layout(
         xaxis_title="Month",
         yaxis=dict(
-            title="Activity Level (compared to this road's own history)",
+            title=None,
             tickmode="array",
             tickvals=[1, 2, 3, 4, 5],
             ticktext=config.ACTIVITY_LEVELS,
-            range=[0, 5.5],
+            range=[0, 6.2],
         ),
         barmode="group",
+        bargap=0.25,
         hovermode="x unified",
-        legend_title="Corridor",
+        legend_title="Highway",
         margin=dict(t=30, b=10),
+        height=380,
         showlegend=len(dfs) > 1,
     )
     return fig
@@ -427,51 +462,80 @@ def render_proxy_index_chart(dfs: dict) -> go.Figure:
     fig.add_hline(y=0, line_dash="dot", line_color="gray")
     fig.update_layout(
         xaxis_title="Month",
-        yaxis_title="Standard deviations from this corridor's historical mean (z-score)",
+        yaxis_title="Standard deviations from this road's historical mean (z-score)",
         hovermode="x unified",
-        legend_title="Corridor",
+        legend_title="Highway",
         margin=dict(t=30, b=10),
     )
     return fig
 
 
+def _describe_change(value: float) -> str:
+    """Classify a dB change into a plain-language description.
+
+    A small band around zero is called "About the same" rather than
+    stronger/weaker, so ordinary acquisition-to-acquisition noise isn't
+    over-narrated as a meaningful change. See
+    config.CHANGE_ABOUT_SAME_THRESHOLD_DB for the cutoff.
+    """
+    if value is None or pd.isna(value):
+        return "No comparison available"
+    if abs(value) < config.CHANGE_ABOUT_SAME_THRESHOLD_DB:
+        return "About the same as last month"
+    return "Stronger than last month" if value > 0 else "Weaker than last month"
+
+
 def render_change_chart(dfs: dict) -> go.Figure:
-    """Change in radar signal strength from the previous month."""
+    """Plain-language month-to-month change: direction and color only.
+
+    No dB numbers are shown on the axis or in the hover text — bar
+    direction (up/down) plus color (green/red) carry the meaning, backed by
+    a plain-language description on hover. Exact values remain available in
+    the Advanced z-score view and the Data tab.
+    """
     fig = go.Figure()
+    all_values = pd.concat([df["monthly_change_db"] for df in dfs.values()]).dropna()
+
     for code, df in dfs.items():
         colors = [
             "#e74c3c" if v is not None and pd.notna(v) and v < 0 else "#2ecc71"
             for v in df["monthly_change_db"]
         ]
+        descriptions = df["monthly_change_db"].apply(_describe_change)
         fig.add_trace(
             go.Bar(
                 x=df["date"],
                 y=df["monthly_change_db"],
                 name=code,
                 marker_color=colors if len(dfs) == 1 else None,
+                customdata=descriptions,
                 hovertemplate=(
-                    "%{x|%b %Y}<br>Change: %{y:+.1f} dB<extra>" + code + "</extra>"
+                    "%{x|%b %Y}<br>%{customdata}<extra>" + code + "</extra>"
                 ),
             )
         )
+
+    yaxis_config = dict(title=None, showgrid=False, zeroline=True, zerolinecolor="gray")
+    if not all_values.empty:
+        span = max(abs(all_values.min()), abs(all_values.max()))
+        pad = span * 0.25 if span > 0 else 1.0
+        bound = span + pad
+        yaxis_config.update(
+            range=[-bound, bound],
+            tickmode="array",
+            tickvals=[-bound, 0, bound],
+            ticktext=["Weaker", "No change", "Stronger"],
+        )
+
     fig.update_layout(
         xaxis_title="Month",
-        yaxis_title="Signal Change vs. Previous Month (dB)",
+        yaxis=yaxis_config,
         hovermode="x unified",
-        legend_title="Corridor",
+        legend_title="Highway",
         barmode="group",
         margin=dict(t=30, b=10),
     )
     return fig
-
-
-def render_status_badge(status: str) -> str:
-    mapping = {
-        "ok": '<span class="status-ok">●</span> OK',
-        "no_data": '<span class="status-nodata">●</span> No Imagery',
-        "error": '<span class="status-error">●</span> Error',
-    }
-    return mapping.get(status, status)
 
 
 def build_folium_map(selected_road_codes: list, radar_overlay: bool, s2_date: str) -> folium.Map:
@@ -560,7 +624,7 @@ def build_folium_map(selected_road_codes: list, radar_overlay: bool, s2_date: st
 # ---------------------------------------------------------------------------
 
 tab_overview, tab_map, tab_compare, tab_data, tab_methodology = st.tabs(
-    ["Overview", "Satellite Map", "Corridor Comparison", "Data", "Methodology"]
+    ["Overview", "Satellite Map", "Road Comparison", "Data", "Methodology"]
 )
 
 # ---- Overview tab ---------------------------------------------------------
@@ -599,7 +663,7 @@ with tab_overview:
 
         st.caption(
             "\"Activity Level\" compares this month's radar signal to this "
-            "same corridor's own history — it is not an exact traffic "
+            "same road's own history — it is not an exact traffic "
             "congestion count."
         )
 
@@ -611,16 +675,16 @@ with tab_overview:
         st.plotly_chart(render_activity_level_chart(chart_data), use_container_width=True)
         st.caption(
             "Each bar shows how this month's satellite radar reading "
-            "compares to this corridor's own history: Normal = typical, "
+            "compares to this road's own history: Normal = typical, "
             "Elevated/High = stronger signal than usual, Low/Very Low = "
             "weaker signal than usual."
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**Radar Signal Strength Over Time**")
+            st.markdown("**Signal Trend Over Time**")
             st.plotly_chart(render_signal_strength_chart(chart_data), use_container_width=True)
-            st.caption("The raw satellite measurement each month (higher = stronger radar reflection).")
+            st.caption("Shows whether the satellite reading has been getting stronger or weaker each month.")
         with c2:
             st.markdown("**Change From Previous Month**")
             st.plotly_chart(render_change_chart(chart_data), use_container_width=True)
@@ -636,7 +700,7 @@ with tab_overview:
 
 # ---- Satellite Map tab -----------------------------------------------------
 with tab_map:
-    st.subheader("Interactive Corridor Map")
+    st.subheader("Interactive Highway Map")
     st.caption(
         "Sentinel-2 provides true-color visual context (~10 m resolution). "
         "The optional Sentinel-1 layer shows mean VV radar backscatter — "
@@ -644,7 +708,7 @@ with tab_map:
     )
 
     map_codes = st.multiselect(
-        "Corridors to display",
+        "Highways to display",
         options=available_codes,
         default=selected_codes if selected_codes else available_codes,
         format_func=lambda code: f"{code} — {corridors_module.get_corridor(code)['name']}",
@@ -664,34 +728,36 @@ with tab_map:
         if not ee_ready:
             st.warning("Map imagery requires an active Earth Engine session.")
         elif not map_codes:
-            st.info("Select at least one corridor to display.")
+            st.info("Select at least one highway to display.")
         else:
             fmap = build_folium_map(map_codes, show_radar, s2_date)
             st_folium(fmap, use_container_width=True, height=560, returned_objects=[])
 
-# ---- Corridor Comparison tab ----------------------------------------------
+# ---- Road Comparison tab ----------------------------------------------
 with tab_compare:
-    st.subheader("E11 vs. E311 — Corridor Comparison")
+    st.subheader("E11 vs. E311 — Road Comparison")
     if len(results) < 2:
         st.info(
-            "Run the analysis in **Compare Corridors** mode (sidebar) with "
-            "two or more corridors selected to see a side-by-side comparison."
+            "Run the analysis in **Compare Highways** mode (sidebar) with "
+            "two or more highways selected to see a side-by-side comparison."
         )
     else:
         st.markdown("**Activity Level — which road is more active than usual?**")
         st.plotly_chart(render_activity_level_chart(results), use_container_width=True)
         st.caption(
             "Compares each road only to its own history, so this is the "
-            "fairest way to compare two different corridors side by side."
+            "fairest way to compare two different roads side by side."
         )
 
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**Radar Signal Strength Over Time**")
+            st.markdown("**Signal Trend Over Time**")
             st.plotly_chart(render_signal_strength_chart(results), use_container_width=True)
+            st.caption("Shows whether each road's satellite reading has been getting stronger or weaker.")
         with c2:
             st.markdown("**Change From Previous Month**")
             st.plotly_chart(render_change_chart(results), use_container_width=True)
+            st.caption("Green = signal got stronger since last month. Red = it got weaker.")
 
         with st.expander("🔧 Advanced: technical z-score view"):
             st.plotly_chart(render_proxy_index_chart(results), use_container_width=True)
@@ -702,10 +768,8 @@ with tab_compare:
             s = traffic_analyzer.summarize_latest(df)
             rows.append(
                 {
-                    "Corridor": code,
+                    "Highway": code,
                     "Latest Date": s["latest_date"],
-                    "Latest Signal (dB)": s["latest_mean_vv_db"],
-                    "Typical Signal (dB)": s["historical_avg_vv_db"],
                     "Activity Level": s["relative_activity"],
                     "Usable Months": f"{s['usable_scene_months']}/{s['total_months']}",
                 }
@@ -795,15 +859,15 @@ with tab_methodology:
   moisture, vegetation, and the satellite's acquisition geometry
   (ascending vs. descending pass, incidence angle).
 - This application aggregates VV (and, where available, VH) backscatter
-  over a buffered polygon around each highway corridor, for a short time
-  window around a target day each month, and tracks how that aggregate
-  changes over time.
+  over a measurement zone around each highway, for a short time window
+  around a target day each month, and tracks how that aggregate changes
+  over time.
 - **This is an experimental, relative traffic-activity proxy — not a
   vehicle count and not a validated congestion metric.** Sentinel-1's
   resolution and revisit characteristics mean a single scene reflects a
   brief moment in time, not sustained traffic flow.
 - **Sentinel-2** (optical, ~10 m/pixel at best) is used only for visual
-  corridor context/basemap purposes. At 10 m/pixel, individual passenger
+  road context/basemap purposes. At 10 m/pixel, individual passenger
   vehicles (typically ~2×5 m) are far below the resolution needed for
   reliable optical detection or counting.
 - If direct individual-vehicle detection were ever pursued, it would
@@ -825,10 +889,10 @@ angular, metallic objects — vehicles, guardrails, signage, buildings —
 reflect more of it straight back (stronger return).
 
 **Activity Level** (Very Low → High) takes that raw dB value and compares
-it only to *this same corridor's own history*. It answers "is this month
+it only to *this same road's own history*. It answers "is this month
 unusual for this specific road?" rather than giving an absolute number.
 Under the hood it's a z-score (how many standard deviations from this
-corridor's own historical average) — see the "Advanced: technical z-score
+road's own historical average) — see the "Advanced: technical z-score
 view" expander on the Overview and Comparison tabs if you want the raw
 statistic instead of the plain-language label.
             """
@@ -843,9 +907,9 @@ The **Traffic Proxy Index** is a z-score:
 z = (mean_VV_month − historical_mean_VV) / historical_std_VV
 ```
 
-computed relative to the corridor's own historical mean and standard
+computed relative to the road's own historical mean and standard
 deviation across the analyzed period. A positive z-score means this
-month's radar backscatter was above the corridor's typical historical
+month's radar backscatter was above the road's typical historical
 level; a negative z-score means it was below.
 
 We also report **percentage deviation** from the full-period average and a
@@ -853,8 +917,8 @@ We also report **percentage deviation** from the full-period average and a
 
 The resulting classification — **Activity Level** — bins the z-score into:
 Very Low, Low, Normal, Elevated, High. This describes a **radar anomaly
-relative to historical values for that specific corridor**, not an
-absolute or cross-corridor congestion measurement.
+relative to historical values for that specific road**, not an
+absolute or cross-road congestion measurement.
             """
         )
 
@@ -904,7 +968,7 @@ simulated anywhere in this application.
 | SAR instrument mode | `{config.S1_INSTRUMENT_MODE}` |
 | SAR reduction scale | {config.S1_REDUCE_SCALE_METERS} m |
 | Optical composite | Median of least-cloudy scenes, cloud filter < {config.S2_MAX_CLOUD_PERCENT}% |
-| Default corridor buffer | {config.DEFAULT_BUFFER_METERS} m |
+| Default measurement zone width | {config.DEFAULT_BUFFER_METERS} m |
 | Default history window | {config.DEFAULT_MONTHS_BACK} months |
 | Default target day | {config.DEFAULT_TARGET_DAY} |
             """
