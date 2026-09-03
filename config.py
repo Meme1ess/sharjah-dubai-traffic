@@ -134,6 +134,19 @@ ACTIVITY_LEVEL_COLORS = {
     "Unknown": "#5b6472",
 }
 
+# Small badge icons shown next to the Activity Level text wherever it's
+# displayed (metric cards, tables, chart hover) — a light personality touch
+# that echoes the diverging color ramp above without replacing the text
+# label (never color/icon alone; see ACTIVITY_LEVEL_COLORS' note).
+ACTIVITY_LEVEL_BADGES = {
+    "Very Low": "🔵",
+    "Low": "🔹",
+    "Normal": "⚪",
+    "Elevated": "🔶",
+    "High": "🔴",
+    "Unknown": "❔",
+}
+
 # Below this absolute dB change, the simplified "Change From Previous Month"
 # chart describes the month as "About the same" rather than stronger/weaker,
 # so tiny acquisition-noise fluctuations aren't over-narrated as a change.

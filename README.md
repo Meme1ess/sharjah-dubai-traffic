@@ -14,9 +14,9 @@ server-side in **Google Earth Engine (GEE)**.
 
 ## What this application does
 
-- Defines highway corridors (initially **E311 – Sheikh Mohammed Bin Zayed
-  Road** and **E11 – Al Ittihad Road**) as buffered line geometries in
-  `corridors.py`.
+- Defines highway corridors (**E311 – Sheikh Mohammed Bin Zayed Road**,
+  **E11 – Al Ittihad Road**, and **E611 – Emirates Road**) as buffered line
+  geometries in `corridors.py`.
 - For each of the last *N* months, queries Sentinel-1 GRD (`IW` mode, VV/VH)
   over the corridor buffer within a configurable date window, and computes
   mean/median/std backscatter server-side in Earth Engine.
@@ -152,12 +152,12 @@ streamlit run app.py
 
 Then, in the browser dashboard:
 
-1. Choose **Single Corridor** or **Compare Corridors** mode.
-2. Select E11 and/or E311.
+1. Choose **Single Highway** or **Compare Highways** mode.
+2. Select any of E11, E311, or E611.
 3. Set months of history (3–24), target day of month (default 25), date
-   tolerance, corridor buffer width, and Sentinel-1 orbit direction.
+   tolerance, measurement zone width, and Sentinel-1 orbit direction.
 4. Click **Run Satellite Analysis**.
-5. Explore the **Overview**, **Satellite Map**, **Corridor Comparison**,
+5. Explore the **Overview**, **Satellite Map**, **Road Comparison**,
    **Data**, and **Methodology** tabs.
 6. Download the results table as
    `sharjah_dubai_satellite_traffic_proxy.csv` from the Data tab.

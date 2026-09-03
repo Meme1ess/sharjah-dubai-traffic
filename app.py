@@ -17,6 +17,7 @@ import folium
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_folium import st_folium
 
 import config
@@ -194,11 +195,109 @@ details[data-testid="stExpander"] {{
 [data-testid="stDataFrame"] {{ border-radius: 10px; overflow: hidden; border: 1px solid var(--border-subtle); }}
 [data-testid="stCaptionContainer"] {{ color: var(--text-muted) !important; }}
 hr {{ border-color: var(--border-subtle) !important; }}
+
+/* -- entrance animations -------------------------------------------------
+   Cards and charts fade+lift in as they render, staggered per column so a
+   row of metrics cascades in left-to-right instead of popping in at once.
+   Pure CSS (no JS), so it replays reliably on every Streamlit rerun since
+   these are freshly-inserted DOM nodes each time. */
+@keyframes fadeInUp {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+div[data-testid="stMetric"],
+div[data-testid="stPlotlyChart"],
+details[data-testid="stExpander"],
+[data-testid="stDataFrame"] {{
+    animation: fadeInUp 0.45s ease both;
+}}
+div[data-testid="column"]:nth-of-type(1) div[data-testid="stMetric"] {{ animation-delay: 0.02s; }}
+div[data-testid="column"]:nth-of-type(2) div[data-testid="stMetric"] {{ animation-delay: 0.08s; }}
+div[data-testid="column"]:nth-of-type(3) div[data-testid="stMetric"] {{ animation-delay: 0.14s; }}
+div[data-testid="column"]:nth-of-type(4) div[data-testid="stMetric"] {{ animation-delay: 0.20s; }}
+div[data-testid="column"]:nth-of-type(5) div[data-testid="stMetric"] {{ animation-delay: 0.26s; }}
+
+/* CTA pulse: gently draws the eye to the primary action before the first
+   run only (Python adds/omits the "cta-idle" class based on whether
+   results exist yet), so it stops calling attention to itself once used. */
+@keyframes ctaPulse {{
+    0%, 100% {{ box-shadow: 0 4px 18px rgba(77,166,255,0.25); }}
+    50% {{ box-shadow: 0 4px 28px rgba(77,166,255,0.55), 0 0 0 4px rgba(77,166,255,0.08); }}
+}}
+.st-key-run_button_container_idle .stButton > button {{ animation: ctaPulse 2.4s ease-in-out infinite; }}
 </style>
 """
 
 
 st.markdown(_themed_css(), unsafe_allow_html=True)
+
+# Number count-up animation for metric cards. st.markdown's <script> tags
+# never execute in Streamlit (HTML is inserted via innerHTML, which the
+# browser never runs embedded scripts for), so this needs a real
+# components.html() iframe instead, reaching into window.parent.document
+# (same-origin, so this is allowed) to touch the actual app DOM. Installs
+# ONE persistent pair of MutationObservers the first time the page loads in
+# the browser tab; from then on it reacts to every future Streamlit rerun
+# without needing to re-run itself. Fully wrapped in try/catch and no-ops
+# safely if anything about this iframe/DOM access ever stops working —
+# worst case the numbers just render statically, same as before.
+components.html(
+    """
+    <script>
+    (function() {
+      try {
+        var doc = window.parent.document;
+        function animateValue(el) {
+          var text = el.textContent.trim();
+          if (el._cuRunning || el._cuLastText === text) return;
+          var m = text.match(/-?\\d+\\.?\\d*/);
+          if (!m) { el._cuLastText = text; return; }
+          var target = parseFloat(m[0]);
+          var idx = text.indexOf(m[0]);
+          var prefix = text.slice(0, idx);
+          var suffix = text.slice(idx + m[0].length);
+          var decimals = (m[0].split('.')[1] || '').length;
+          el._cuRunning = true;
+          if (el._cuObserver) el._cuObserver.disconnect();
+          var duration = 650, start = null;
+          function step(ts) {
+            if (start === null) start = ts;
+            var p = Math.min((ts - start) / duration, 1);
+            var eased = 1 - Math.pow(1 - p, 3);
+            el.textContent = prefix + (target * eased).toFixed(decimals) + suffix;
+            if (p < 1) {
+              requestAnimationFrame(step);
+            } else {
+              el.textContent = text;
+              el._cuLastText = text;
+              el._cuRunning = false;
+              if (el._cuObserver) {
+                el._cuObserver.observe(el, {childList: true, characterData: true, subtree: true});
+              }
+            }
+          }
+          requestAnimationFrame(step);
+        }
+        function scan() {
+          doc.querySelectorAll('[data-testid="stMetricValue"]').forEach(function (el) {
+            if (!el._cuSetup) {
+              el._cuSetup = true;
+              el._cuLastText = null;
+              var obs = new MutationObserver(function () { animateValue(el); });
+              el._cuObserver = obs;
+              obs.observe(el, {childList: true, characterData: true, subtree: true});
+              animateValue(el);
+            }
+          });
+        }
+        new MutationObserver(scan).observe(doc.body, {childList: true, subtree: true});
+        scan();
+      } catch (e) { /* animation is a nice-to-have; never break the app over it */ }
+    })();
+    </script>
+    """,
+    height=0,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +320,7 @@ def _get_service_account_secret() -> dict | None:
     return None
 
 
-@st.cache_resource(show_spinner="Connecting to Google Earth Engine...")
+@st.cache_resource(show_spinner="🛰️ Establishing satellite uplink...")
 def _ee_session():
     """Initialize Earth Engine once per Streamlit server process.
 
@@ -384,7 +483,9 @@ if orbit_direction == "All":
         "scientific consistency."
     )
 
-run_clicked = st.sidebar.button("🛰️ Run Satellite Analysis", type="primary", use_container_width=True)
+_has_results = bool(st.session_state.get("results"))
+with st.sidebar.container(key="run_button_container" if _has_results else "run_button_container_idle"):
+    run_clicked = st.button("🛰️ Run Satellite Analysis", type="primary", use_container_width=True)
 
 st.sidebar.divider()
 st.sidebar.caption(
@@ -402,15 +503,24 @@ if "results" not in st.session_state:
 if "last_params" not in st.session_state:
     st.session_state["last_params"] = None
 
+SCAN_MESSAGES = [
+    "📡 Pinging {code} via Sentinel-1...",
+    "🔭 Scanning {code} for radar echoes...",
+    "🛰️ Downlinking {code}'s signal...",
+    "📶 Tuning into {code}'s radar backscatter...",
+]
+
 if run_clicked and ee_ready:
     if not selected_codes:
         st.sidebar.warning("Select at least one highway to analyze.")
     else:
         results = {}
-        progress = st.sidebar.progress(0.0, text="Starting analysis...")
+        had_error = False
+        progress = st.sidebar.progress(0.0, text="🛰️ Powering up the satellite uplink...")
         for i, code in enumerate(selected_codes):
             progress.progress(
-                i / len(selected_codes), text=f"Analyzing {code}..."
+                i / len(selected_codes),
+                text=SCAN_MESSAGES[i % len(SCAN_MESSAGES)].format(code=code),
             )
             try:
                 df = run_corridor_analysis(
@@ -423,8 +533,11 @@ if run_clicked and ee_ready:
                 )
                 results[code] = df
             except Exception as exc:  # noqa: BLE001
+                had_error = True
                 st.sidebar.error(f"Analysis failed for {code}: {exc}")
-        progress.progress(1.0, text="Done.")
+        progress.progress(1.0, text="✅ Downlink complete!")
+        if results and not had_error:
+            st.balloons()
         st.session_state["results"] = results
         st.session_state["last_params"] = {
             "months_back": months_back,
@@ -491,6 +604,16 @@ def eyebrow(text: str) -> None:
     the dashboard-style "mission control" visual language used throughout.
     """
     st.markdown(f'<div class="eyebrow">{text}</div>', unsafe_allow_html=True)
+
+
+def activity_badge(level: str) -> str:
+    """Prefix an Activity Level label with its small badge icon, e.g.
+    'Low' -> '🔹 Low'. Icon is always paired with the text (never replaces
+    it), consistent with the "never color/icon alone" rule this app
+    already follows for the Activity Level color ramp.
+    """
+    icon = config.ACTIVITY_LEVEL_BADGES.get(level, config.ACTIVITY_LEVEL_BADGES["Unknown"])
+    return f"{icon} {level}"
 
 
 def render_signal_strength_chart(dfs: dict) -> go.Figure:
@@ -564,12 +687,15 @@ def render_activity_level_chart(dfs: dict) -> go.Figure:
         plain_text = activity.map(ACTIVITY_LEVEL_PLAIN_HOVER).fillna(
             ACTIVITY_LEVEL_PLAIN_HOVER["Unknown"]
         )
-        # Zero-height "Unknown" bars have no visible bar to attach a label
-        # to — when two series both land on "Unknown" for the same month,
-        # their outside-positioned labels would otherwise stack into an
-        # unreadable overlap. Suppress the label there; the hover tooltip
-        # still explains it.
-        bar_labels = activity.where(activity != "Unknown", "")
+        # On-bar text labels only render for a single highway. With two or
+        # more highways grouped side by side, the bars get narrow enough
+        # that outside-positioned labels collide and overlap illegibly —
+        # the legend + color + hover tooltip already identify each bar in
+        # that view, so the label is redundant there anyway. Also suppress
+        # it for "Unknown" (zero-height bars have nothing to attach a
+        # label to); the hover tooltip still explains it.
+        show_labels = len(dfs) == 1
+        bar_labels = activity.where(show_labels & (activity != "Unknown"), "")
         fig.add_trace(
             go.Bar(
                 x=df["date"],
@@ -815,7 +941,7 @@ def build_folium_map(selected_road_codes: list, radar_overlay: bool, s2_date: st
 # ---------------------------------------------------------------------------
 
 tab_overview, tab_map, tab_compare, tab_data, tab_methodology = st.tabs(
-    ["Overview", "Satellite Map", "Road Comparison", "Data", "Methodology"]
+    ["🛰️ Overview", "🗺️ Satellite Map", "⚖️ Road Comparison", "📊 Data", "📘 Methodology"]
 )
 
 # ---- Overview tab ---------------------------------------------------------
@@ -847,7 +973,7 @@ with tab_overview:
             "Change vs. Previous Month",
             f"{change_val:+.1f} dB" if change_val is not None and pd.notna(change_val) else "N/A",
         )
-        col4.metric("Activity Level", summary["relative_activity"])
+        col4.metric("Activity Level", activity_badge(summary["relative_activity"]))
         col5.metric(
             "Usable Satellite Scenes",
             f"{summary['usable_scene_months']} / {summary['total_months']} months",
@@ -932,7 +1058,8 @@ with tab_map:
 # ---- Road Comparison tab ----------------------------------------------
 with tab_compare:
     eyebrow("Head to Head")
-    st.subheader("E11 vs. E311")
+    compare_title = " vs. ".join(results.keys()) if len(results) >= 2 else " vs. ".join(available_codes)
+    st.subheader(compare_title)
     if len(results) < 2:
         st.info(
             "Run the analysis in **Compare Highways** mode (sidebar) with "
@@ -970,7 +1097,7 @@ with tab_compare:
                 {
                     "Highway": code,
                     "Latest Date": s["latest_date"],
-                    "Activity Level": s["relative_activity"],
+                    "Activity Level": activity_badge(s["relative_activity"]),
                     "Usable Months": f"{s['usable_scene_months']}/{s['total_months']}",
                 }
             )

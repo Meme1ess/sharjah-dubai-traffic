@@ -83,9 +83,29 @@ _E11 = Corridor(
     ),
 )
 
+_E611 = Corridor(
+    road_code="E611",
+    name="Emirates Road / E611",
+    coordinates=[
+        (55.4550, 25.1450),  # Dubai side, near Dubai Silicon Oasis / Academic City
+        (55.4780, 25.2050),  # Dubai-Sharjah border area
+        (55.5000, 25.2700),  # Sharjah, University City vicinity
+        (55.5150, 25.3300),  # Sharjah, towards Al Dhaid Rd interchange
+    ],
+    buffer_meters=100,
+    description=(
+        "Outer beltway (part of the wider Emirates Road ring connecting "
+        "Ras Al Khaimah through the Northern Emirates to Abu Dhabi) linking "
+        "eastern Dubai with eastern Sharjah. Rounds out cross-emirate "
+        "coverage alongside the coastal E11 and inland E311 corridors, for "
+        "a more complete picture of Dubai-Sharjah traffic activity."
+    ),
+)
+
 CORRIDORS: dict = {
     "E311": _E311.as_dict(),
     "E11": _E11.as_dict(),
+    "E611": _E611.as_dict(),
 }
 
 
